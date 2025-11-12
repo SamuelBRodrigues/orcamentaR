@@ -1,5 +1,5 @@
 # LDO -----
-dir <- "C:/Users/samba/Downloads/LDO/"
+dir <- "/Users/samuelrodrigues/Documents/Trabalho/Perceptron/orcamentaR/data-raw/LDO/"
 ## AC -------
 dir_ac <- stringr::str_glue("{dir}AC/")
 html_ac <- rvest::read_html("https://seplan.ac.gov.br/lei-de-diretrizes-orcamentarias-ldo")
@@ -986,6 +986,55 @@ purrr::pwalk(
   }
 )
 
+## PR ------------------------
+dir_pr <- stringr::str_glue("{dir}PR/")
+
+url_pr <- "https://www.fazenda.pr.gov.br/Pagina/Lei-de-Diretrizes-Orcamentarias-Historico-Sistema-Estadual-de-Legislacao"
+
+html_pr <- rvest::read_html(url_pr)
+
+links_redirecionamento <- html_pr |> 
+  rvest::html_element("div#collapseCollapsibleMG5MO4M2YYVGC") |> 
+  rvest::html_elements("a") |> 
+  rvest::html_attr("href")
+
+
+purrr::walk(
+  links_redirecionamento,
+  ~{
+    link_redirecionado <- .x
+    # Lendo o link redirecionado
+    html <- rvest::read_html(link_redirecionado)
+    # Pegando o corpo do texto
+    txt <- html |> 
+      rvest::html_element("form") |> 
+      rvest::html_text2()
+
+    # Extraindo o ano vigente da LDO
+    ano <- html |> 
+      rvest::html_element("p") |> 
+      rvest::html_text2() |> 
+      stringr::str_extract("\\d{4}")
+
+    # Nome do arquivo
+    nome <- stringr::str_glue("LDO_{ano}.txt")
+
+    # Definindo o diretório do arquivo
+    dir_ano <- stringr::str_glue("{dir_pr}{ano}/")
+    if(!dir.exists(dir_ano)){
+      dir.create(dir_ano, recursive = T)
+    }
+    dest <- stringr::str_glue("{dir_ano}{nome}")
+
+    # Escrevendo a LDO em um arquivo txt
+    writeLines(
+      txt,
+      dest
+    )
+    # Estabelecendo um intervalo aleatório entre as extrações 
+    Sys.sleep(runif(1, 5, 10))
+  }
+)
 
 # PPA -------------------------
 
