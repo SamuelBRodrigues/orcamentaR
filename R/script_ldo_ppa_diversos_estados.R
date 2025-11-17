@@ -1,5 +1,5 @@
 # LDO -----
-dir <- "/Users/samuelrodrigues/Documents/Trabalho/Perceptron/orcamentaR/data-raw/LDO/"
+dir <- "data-raw/LDO/"
 ## AC -------
 dir_ac <- stringr::str_glue("{dir}AC/")
 html_ac <- rvest::read_html("https://seplan.ac.gov.br/lei-de-diretrizes-orcamentarias-ldo")
@@ -1036,6 +1036,54 @@ purrr::walk(
   }
 )
 
+## RN -------------------------
+# Definindo o diretório para os dados de LDO do RN
+dir_rn <- stringr::str_glue("{dir}RN/")
+# Url onde os dados estão disponíveis
+url_rn <- "http://adcon.rn.gov.br/ACERVO/seplan/Conteudo.asp?TRAN=PASTAC&TARG=2476&ACT=&PAGE=&PARM=&LBL="
+# Lendo o html do url
+html_rn <- rvest::read_html(url_rn)
+
+links <- html_rn |> 
+  rvest::html_element("div#ACERVO") |> 
+  rvest::html_elements("a") |> 
+  rvest::html_attr("href")
+
+nomes <- html_rn |> 
+  rvest::html_element("div#ACERVO") |> 
+  rvest::html_elements("a") |> 
+  rvest::html_text2() |> 
+  stringr::str_remove_all("\\.pdf|\\.PDF") |> 
+  stringr::str_remove_all("\\W") |> 
+  stringr::str_c(".pdf")
+
+anos <- html_rn |> 
+  rvest::html_element("div#ACERVO") |> 
+  rvest::html_elements("a") |> 
+  rvest::html_text2() |> 
+  stringr::str_extract("(?<=LDO\\s|PLDO\\s|LOA\\s)\\d{4}")
+
+infos <- tibble::tibble(
+  link = links,
+  nome = nomes,
+  ano = anos,
+  doc = stringr::str_extract(nome, "PLDO|LDO|LOA")
+)
+
+purrr::pwalk(
+  infos,
+  function(link, nome, ano, doc){
+    dir <- stringr::str_glue("data-raw/{doc}/")
+    dir_ano <- stringr::str_glue("{dir}{ano}/")
+    if(!dir.exists(dir_ano)){
+      dir.create(dir_ano)
+    }
+    
+  }
+)
+
+##
+t = 1
 # PPA -------------------------
 
 dir <- "C:/Users/samba/Downloads/PPA/"
@@ -2065,3 +2113,80 @@ purrr::pwalk(
     )
   }
 )
+
+# LOA ------------------------
+
+dir <- "data-raw/LOA/"
+
+## AC -------------
+dir_ac <- stringr::str_glue("{dir}AC/")
+url_ac <- "https://seplan.ac.gov.br/lei-orcamentaria-anual-loa/"
+
+
+## Iniciar o driver com o perfil do Firefox
+rs_driver_object <- RSelenium::rsDriver(
+  browser = "firefox",
+  verbose = FALSE,
+  phantomver = NULL
+)
+## Abrir o webdriver
+remDr <- rs_driver_object$client
+
+## Fechando a primeira janela
+remDr$close()
+
+## Iniciar a Navegação Remota
+remDr$open()
+## Navegando até o site
+remDr$navigate(url_ac)
+
+Sys.sleep(5)
+
+a <- remDr$findElements(
+  using = "css selector",
+  "a"
+)
+
+links <- purrr::map_chr(
+  seq(1, length(a)),
+  ~{
+    a[[.x]]$getElementAttribute("href") |> unlist()
+  }
+) |> 
+  stringr::str_subset("pdf") |> 
+  stringr::str_unique()
+rs_driver_object$server$stop()
+purrr::walk(
+  links,
+  ~{
+    nome <- stringr::str_extract(.x, "[^/]+(?<=.pdf)")
+    ano <- stringr::str_extract(nome, "\\d{4}")
+    dir_ano <- stringr::str_glue("{dir_ac}{ano}/")
+    if(!dir.exists(dir_ano)){
+      dir.create(dir_ano, recursive = T)
+    }
+    
+    dest <- stringr::str_glue("{dir_ano}{nome}")
+
+    download.file(
+      url = .x,
+      destfile = dest,
+      mode = "wb"
+    )
+    
+  }
+)
+
+## AM ---------------
+dir_am <- stringr::str_glue("{dir}AM/")
+
+url_am <- "https://www.tjam.jus.br/index.php/transparencia/gestao-orcamentaria/lei-orcamentaria-anual-e-qdd?own=0"
+
+html_am <- rvest::read_html(url_am)
+
+links_redirecionamento <- html_am |> 
+  rvest::html_elements("span.whitespace_preserver") |> 
+  rvest::html_elements("a") |> 
+  rvest::html_attr("href") %>%
+  stringr::str_c("https://www.tjam.jus.br", .)
+
