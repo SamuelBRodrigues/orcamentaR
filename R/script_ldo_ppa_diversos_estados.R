@@ -2190,3 +2190,55 @@ links_redirecionamento <- html_am |>
   rvest::html_attr("href") %>%
   stringr::str_c("https://www.tjam.jus.br", .)
 
+infos <- purrr::map_df(
+  links_redirecionamento,
+  ~{
+    link_redirecionado = .x 
+
+    html <- rvest::read_html(link_redirecionado)
+
+    links <- html |> 
+      rvest::html_elements("a") |> 
+      rvest::html_attr("href") |> 
+      stringr::str_subset(".pdf|.xlsx")
+
+    nomes <- links |> 
+      stringr::str_extract(
+        "[^/]+(?<=.pdf|.xlsx)"
+      )
+
+    ano <- stringr::str_extract(link_redirecionado, "\\d{4}")
+
+    info <- tibble::tibble(
+      link = links,
+      nome = nomes,
+      ano = ano
+    ) |> 
+      dplyr::mutate(
+        nome = stringr::str_remove_all(nome, "\\W"),
+        nome = stringr::str_replace(nome, "pdf", ".pdf"),
+        nome = stringr::str_replace(nome, "xlsx", ".xlsx"),
+      )
+  }
+) |> 
+  dplyr::distinct()
+
+purrr::pwalk(
+  infos,
+  function(link, nome, ano){
+    dir_ano <- stringr::str_glue("{dir_am}{ano}/")
+    if(!dir.exists(dir_ano)){
+      dir.create(dir_ano, recursive = T)
+    }
+
+    dest <- stringr::str_glue("{dir_ano}{nome}")
+
+    download.file(
+      url = link,
+      destfile = dest,
+      mode = "wb"
+    )
+  }
+)
+
+
