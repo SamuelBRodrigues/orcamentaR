@@ -2198,14 +2198,17 @@ infos <- purrr::map_df(
     html <- rvest::read_html(link_redirecionado)
 
     links <- html |> 
+      rvest::html_element("div.docman_table_layout.docman_table_layout--default") |> 
+      rvest::html_element("table.table") |> 
       rvest::html_elements("a") |> 
-      rvest::html_attr("href") |> 
-      stringr::str_subset(".pdf|.xlsx")
+      rvest::html_attr("href") %>%
+      stringr::str_c("https://www.tjam.jus.br", .)
 
-    nomes <- links |> 
-      stringr::str_extract(
-        "[^/]+(?<=.pdf|.xlsx)"
-      )
+    nomes <- html |> 
+      rvest::html_element("div.docman_table_layout.docman_table_layout--default") |> 
+      rvest::html_elements("a") |> 
+      rvest::html_text2() |> 
+      stringr::str_remove_all("\\W")
 
     ano <- stringr::str_extract(link_redirecionado, "\\d{4}")
 
@@ -2215,9 +2218,10 @@ infos <- purrr::map_df(
       ano = ano
     ) |> 
       dplyr::mutate(
-        nome = stringr::str_remove_all(nome, "\\W"),
-        nome = stringr::str_replace(nome, "pdf", ".pdf"),
-        nome = stringr::str_replace(nome, "xlsx", ".xlsx"),
+        nome = dplyr::case_when(
+          stringr::str_detect(nome, "pdf") ~ stringr::str_glue("{nome}.pdf"),
+          stringr::str_detect(nome, "xlsx") ~ stringr::str_glue("{nome}.xlsx")
+        )
       )
   }
 ) |> 
@@ -2241,4 +2245,95 @@ purrr::pwalk(
   }
 )
 
+## BA ------------
 
+dir_ba <- stringr::str_glue("{dir}BA/")
+
+url_ba_1 <- "https://www.ba.gov.br/seplan/orcamento/orcamento-anual"
+
+html_ba_1 <- rvest::read_html(url_ba_1)
+
+links_loa_1 <- html_ba_1 |> 
+  rvest::html_element("#page-main > div > div.row.g-0 > div > div > article > div > div") |> 
+  rvest::html_elements("a") |> 
+  rvest::html_attr("href") |> 
+  stringr::str_subset("\\.pdf$") %>%
+  stringr::str_c("https://www.ba.gov.br", .)
+
+nomes_loa_1 <- links_loa_1 |> 
+  stringr::str_extract("[^/]+(?<=\\.pdf)")
+
+anos_loa_1 <- nomes_loa_1 |> 
+  stringr::str_extract("\\d{4}")
+
+infos_loa_1 <- tibble::tibble(
+  link = links_loa_1,
+  nome = nomes_loa_1,
+  ano = anos_loa_1,
+  doc = stringr::str_extract(nome, "^(LOA|PLOA)")
+)
+
+
+url_ba_2 <- "https://www.ba.gov.br/seplan/orcamento/historico-de-loa"
+
+html_ba_2 <- rvest::read_html(url_ba_2)
+
+container <- html_ba_2 |> 
+  rvest::html_element("div.clearfix.text-formatted.field.field--name-body.field--type-text-with-summary.field--label-hidden.field__item")
+
+filhos <- container |> 
+  rvest::html_children()
+
+grupos <- cumsum(rvest::html_name(filhos) == "h3")
+
+secoes <- split(filhos, grupos)
+
+infos_loa_2 <- purrr::map_df(
+  secoes,
+  ~{
+    secao = .x
+
+    links_secao <- secao |> 
+      rvest::html_elements("a") |> 
+      rvest::html_attr("href") %>%
+      stringr::str_c("https://www.ba.gov.br", .)
+
+    nomes_secao <- stringr::str_extract(links_secao, "[^/]+(?<=\\.pdf|\\.xlsx)")
+
+    ano_secao <- secao |> 
+      rvest::html_text2() |> 
+      purrr::pluck(1) |> 
+      stringr::str_extract("\\d{4}")
+
+    info_secao <- tibble::tibble(
+      link = links_secao,
+      nome = nomes_secao,
+      ano = ano_secao
+    )
+  }
+)
+
+infos <- dplyr::bind_rows(
+  infos_loa_1, infos_loa_2
+) |> 
+  dplyr::mutate(
+    doc = tidyr::replace_na(doc, "LOA")
+  )
+
+purrr::pwalk(
+  infos,
+  function(link, nome, ano, doc){
+    dir_ano <- stringr::str_glue("data-raw/{doc}/BA/{ano}/")
+    if(!dir.exists(dir_ano)){
+      dir.create(dir_ano, recursive = T)
+    }
+
+    dest <- stringr::str_glue("{dir_ano}{nome}")
+
+    download.file(
+      url = link,
+      destfile = dest,
+      mode = "wb"
+    )
+  }
+)
